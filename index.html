@@ -768,6 +768,7 @@ footer {
     <div class="cf-success" id="cf_success">
       ✅ Заявка принята! Мы свяжемся с вами в ближайшее время.
     </div>
+    <div id="cf_error" style="display:none;color:#f87171;font-size:.85rem;margin-top:10px;text-align:center"></div>
     <p style="color:var(--muted);font-size:.78rem;margin-top:16px">Бесплатный период — без карты, без обязательств</p>
   </div>
 </section>
@@ -806,13 +807,35 @@ document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 var TG_TOKEN   = '8637835403:AAHN1OLpxCKroufDX1vIl_DNa5sEkTnrXao';
 var TG_CHAT_ID = '8279706088'; // ← ЗАМЕНИ на свой chat_id
 
+async function sendToTelegram(msg) {
+  var url = 'https://api.telegram.org/bot' + TG_TOKEN + '/sendMessage';
+  var body = JSON.stringify({
+    chat_id: TG_CHAT_ID,
+    text: msg,
+    parse_mode: 'Markdown'
+  });
+  var res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body
+  });
+  return await res.json();
+}
+
 async function submitForm() {
   var name    = document.getElementById('cf_name').value.trim();
   var contact = document.getElementById('cf_contact').value.trim();
-  var plan    = document.getElementById('cf_plan').value;
+  var planEl  = document.getElementById('cf_plan');
+  var plan    = planEl ? planEl.value : 'Не указан';
+  var errEl   = document.getElementById('cf_error');
+  var sucEl   = document.getElementById('cf_success');
+
+  errEl.style.display = 'none';
+  sucEl.style.display = 'none';
 
   if (!name || !contact) {
-    alert('Пожалуйста, заполните имя и контакт');
+    errEl.textContent = '⚠️ Пожалуйста, заполните имя и контакт';
+    errEl.style.display = 'block';
     return;
   }
 
@@ -827,45 +850,35 @@ async function submitForm() {
   });
 
   var msg = '🔔 *НОВАЯ ЗАЯВКА — БухгалтерПро*\n\n'
-    + '👤 *Имя:* ' + name + '\n'
-    + '📞 *Контакт:* ' + contact + '\n'
-    + '📦 *Тариф:* ' + plan + '\n'
+    + '👤 *Имя:* ' + escMd(name) + '\n'
+    + '📞 *Контакт:* ' + escMd(contact) + '\n'
+    + '📦 *Тариф:* ' + escMd(plan) + '\n'
     + '🕐 *Время:* ' + now + '\n\n'
     + '💬 Ответь клиенту и создай аккаунт!';
 
   try {
-    var res = await fetch(
-      'https://api.telegram.org/bot' + TG_TOKEN + '/sendMessage', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TG_CHAT_ID,
-        text: msg,
-        parse_mode: 'Markdown'
-      })
-    });
-    var data = await res.json();
-
+    var data = await sendToTelegram(msg);
     if (data.ok) {
-      document.getElementById('cf_success').style.display = 'block';
+      sucEl.style.display = 'block';
       document.getElementById('cf_name').value = '';
       document.getElementById('cf_contact').value = '';
     } else {
-      // Если chat_id не настроен — всё равно показываем успех клиенту
-      console.warn('TG error:', data.description);
-      document.getElementById('cf_success').style.display = 'block';
-      document.getElementById('cf_name').value = '';
-      document.getElementById('cf_contact').value = '';
+      errEl.textContent = '❌ Ошибка: ' + (data.description || 'неизвестно') + '. Напишите нам напрямую в Telegram.';
+      errEl.style.display = 'block';
+      console.error('TG error:', data);
     }
   } catch(e) {
-    // Сеть недоступна — всё равно показываем успех
-    document.getElementById('cf_success').style.display = 'block';
-    document.getElementById('cf_name').value = '';
-    document.getElementById('cf_contact').value = '';
+    errEl.textContent = '❌ Нет соединения. Напишите нам напрямую: @bek_ayna_xojeli_bot';
+    errEl.style.display = 'block';
+    console.error('Fetch error:', e);
   }
 
   btn.textContent = 'Получить доступ →';
   btn.disabled = false;
+}
+
+function escMd(text) {
+  return String(text).replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
 }
 
 // Кнопки тарифов — автовыбор плана в форме
